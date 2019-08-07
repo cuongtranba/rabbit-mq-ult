@@ -7,4 +7,4 @@ little tool for rabbitmq
 4. per queue per connection
 
 ## start app
-[<img src="https://github.com/cuongtranba/rabbit-mq-ult/rbmq.png">](https://github.com/cuongtranba/rabbit-mq-ult/rbmq.png)
+[<img src="https://github.com/cuongtranba/rabbit-mq-ult/blob/master/rbmq.png">](https://github.com/cuongtranba/rabbit-mq-ult/blob/master/rbmq.png)
