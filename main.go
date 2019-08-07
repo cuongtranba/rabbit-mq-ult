@@ -37,7 +37,6 @@ func main() {
 		log.Info("worker is shutting down")
 		defer close(sigs)
 		cancelF()
-		wg.Wait()
 		quit <- true
 	}()
 	<-quit
