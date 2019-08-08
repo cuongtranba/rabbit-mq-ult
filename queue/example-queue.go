@@ -1,6 +1,8 @@
 package queue
 
 import (
+	"errors"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
@@ -9,9 +11,9 @@ import (
 type ExampleQueue struct {
 }
 
-func (e *ExampleQueue) process(msg []byte, ch *amqp.Channel) error {
+func (e *ExampleQueue) process(msg []byte, ch *amqp.Channel) (bool, error) {
 	log.Infof("process %s", string(msg))
-	return nil
+	return true, errors.New("retry msg")
 }
 
 func (e *ExampleQueue) queueName() string {

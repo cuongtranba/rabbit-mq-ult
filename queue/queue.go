@@ -14,7 +14,7 @@ import (
 
 //Queue Queue
 type Queue interface {
-	process([]byte, *amqp.Channel) error
+	process([]byte, *amqp.Channel) (bool, error)
 	queueName() string
 	numberOfWorker() int
 }
@@ -39,22 +39,25 @@ func (m *Manager) Run(ctx context.Context, cancelF context.CancelFunc, wg *sync.
 func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection, quit chan<- bool) {
 	queueName := fmt.Sprintf(q.queueName() + "_" + os.Getenv("PREFIX_QUEUE_NAME"))
 	queueNameRetry := fmt.Sprintf(q.queueName() + "_RETRY_" + os.Getenv("PREFIX_QUEUE_NAME"))
+	maxRetry, _ := strconv.ParseInt(os.Getenv("MAX_RETRY"), 10, 64)
 	for w := 0; w < q.numberOfWorker(); w++ {
 		go func(w int) {
-			ch := rabbitmq.CreateChannel(con)
+			chconsumer := rabbitmq.CreateChannel(con)
+			chpub := rabbitmq.CreateChannel(con)
 			conClose := make(chan *amqp.Error)
 			consumerTag := queueName + "_" + strconv.Itoa(w)
-			defer ch.Close()
+			defer chconsumer.Close()
+			defer chpub.Close()
 			con.NotifyClose(conClose)
-			rabbitmq.CreateExchange(ch, queueName)
-			rabbitmq.CreateQueue(ch, queueName, nil)
-			ch.QueueBind(queueName, "", queueName, false, nil)
-			msgs := rabbitmq.CreateConsumer(ch, queueName, consumerTag)
+			rabbitmq.CreateExchange(chconsumer, queueName)
+			rabbitmq.CreateQueue(chconsumer, queueName, nil)
+			chconsumer.QueueBind(queueName, "", queueName, false, nil)
+			msgs := rabbitmq.CreateConsumer(chconsumer, queueName, consumerTag)
 			queueRetryArgs := amqp.Table{}
-			rabbitmq.CreateExchange(ch, queueNameRetry)
+			rabbitmq.CreateExchange(chpub, queueNameRetry)
 			queueRetryArgs["x-dead-letter-exchange"] = queueName
-			rabbitmq.CreateQueue(ch, queueNameRetry, queueRetryArgs)
-			ch.QueueBind(queueNameRetry, "", queueNameRetry, false, nil)
+			rabbitmq.CreateQueue(chpub, queueNameRetry, queueRetryArgs)
+			chpub.QueueBind(queueNameRetry, "", queueNameRetry, false, nil)
 			for {
 				select {
 				case close := <-conClose:
@@ -69,10 +72,36 @@ func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGrou
 					return
 				case d := <-msgs:
 					jsonBody := string(d.Body)
-					log.Info("queue ", consumerTag, " receive the msg: ", jsonBody)
-					err := q.process(d.Body, ch)
+					isRetryMsg, IsMaxRetry, currentRetry := rabbitmq.IsMaxRetry(d, maxRetry)
+					if isRetryMsg && IsMaxRetry {
+						log.Infof("msg %s max retry %d", jsonBody, currentRetry)
+						d.Ack(false)
+						continue
+					} else if isRetryMsg {
+						log.Infof("retry msg %s, time: %d", jsonBody, currentRetry)
+					} else {
+						log.Info("queue ", consumerTag, " receive the msg: ", jsonBody)
+					}
+					isRetry, err := q.process(d.Body, chpub)
 					if err != nil {
 						log.Error(err)
+						if isRetry {
+							log.Infof("retry the msg %s", jsonBody)
+							err = chpub.Publish(
+								queueNameRetry,
+								"",
+								false,
+								false,
+								amqp.Publishing{
+									ContentType: "text/plain",
+									Body:        d.Body,
+									Headers:     d.Headers,
+									Expiration:  os.Getenv("RETRY_IN_SECONDS"),
+								})
+							if err != nil {
+								log.Errorf("can not retry the msg %s err: %v", jsonBody, err)
+							}
+						}
 					}
 					d.Ack(false)
 				}

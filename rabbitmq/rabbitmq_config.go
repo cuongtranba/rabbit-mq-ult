@@ -74,7 +74,7 @@ func CreateConsumer(rbmq *amqp.Channel, queueName string, consumerName string) <
 	return msgs
 }
 
-//IsMaxRetry count max retry
+//IsMaxRetry return IsRetryMessage,isMaxRetry, CurrentRetry
 func IsMaxRetry(msg amqp.Delivery, threshold int64) (bool, bool, int64) {
 	headerName := msg.Headers["x-death"]
 	currentCount := int64(0)
