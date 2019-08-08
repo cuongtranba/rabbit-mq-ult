@@ -19,6 +19,7 @@ type Queue interface {
 	numberOfWorker() int
 }
 
+//Manager Manager
 type Manager struct {
 	Quit chan bool
 }
@@ -30,16 +31,12 @@ func (m *Manager) Run(ctx context.Context, cancelF context.CancelFunc, wg *sync.
 		log.Infof("start queue %s , worker %d", q.queueName(), q.numberOfWorker())
 		go func(q Queue, wg *sync.WaitGroup, cancelF context.CancelFunc) {
 			rabbitCon := rabbitmq.CreateCon(os.Getenv("AMQP_URL"))
-			err := runQueue(ctx, cancelF, wg, q, rabbitCon, m.Quit)
-			if err != nil {
-				log.Error(err)
-				return
-			}
+			runQueue(ctx, cancelF, wg, q, rabbitCon, m.Quit)
 		}(q, wg, cancelF)
 	}
 }
 
-func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection, quit chan<- bool) error {
+func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection, quit chan<- bool) {
 	queueName := fmt.Sprintf(q.queueName() + "_" + os.Getenv("PREFIX_QUEUE_NAME"))
 	queueNameRetry := fmt.Sprintf(q.queueName() + "_RETRY_" + os.Getenv("PREFIX_QUEUE_NAME"))
 	for w := 0; w < q.numberOfWorker(); w++ {
@@ -82,5 +79,4 @@ func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGrou
 			}
 		}(w)
 	}
-	return nil
 }
