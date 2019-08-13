@@ -19,6 +19,9 @@ func (e *ExampleQueue) process(msg []byte, ch *amqp.Channel) (bool, error) {
 func (e *ExampleQueue) queueName() string {
 	return "example_queue"
 }
+func (e *ExampleQueue) queueRetry() string {
+	return "example_queue_retry"
+}
 
 func (e *ExampleQueue) numberOfWorker() int {
 	return 5

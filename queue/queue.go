@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"fmt"
 	"job-queue/rabbitmq"
 	"os"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 type Queue interface {
 	process([]byte, *amqp.Channel) (bool, error)
 	queueName() string
+	queueRetry() string
 	numberOfWorker() int
 }
 
@@ -37,8 +37,8 @@ func (m *Manager) Run(ctx context.Context, cancelF context.CancelFunc, wg *sync.
 }
 
 func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection, quit chan<- bool) {
-	queueName := fmt.Sprintf(q.queueName() + "_" + os.Getenv("PREFIX_QUEUE_NAME"))
-	queueNameRetry := fmt.Sprintf(q.queueName() + "_RETRY_" + os.Getenv("PREFIX_QUEUE_NAME"))
+	queueName := q.queueName()
+	queueNameRetry := q.queueRetry()
 	maxRetry, _ := strconv.ParseInt(os.Getenv("MAX_RETRY"), 10, 64)
 	for w := 0; w < q.numberOfWorker(); w++ {
 		go func(w int) {
