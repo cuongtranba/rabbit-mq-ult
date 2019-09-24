@@ -21,29 +21,39 @@ type Queue interface {
 
 //Manager Manager
 type Manager struct {
-	Quit chan bool
+	CancelF context.CancelFunc
 }
 
 //Run Run queues
-func (m *Manager) Run(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, queues ...Queue) {
+func (m *Manager) Run(ctx context.Context, wg *sync.WaitGroup, queues ...Queue) {
 	for _, q := range queues {
 		wg.Add(q.numberOfWorker())
-		log.Infof("start queue %s , worker %d", q.queueName(), q.numberOfWorker())
 		go func(q Queue, wg *sync.WaitGroup, cancelF context.CancelFunc) {
-			rabbitCon := rabbitmq.CreateCon(os.Getenv("AMQP_URL"))
-			runQueue(ctx, cancelF, wg, q, rabbitCon, m.Quit)
-		}(q, wg, cancelF)
+			rabbitCon, err := rabbitmq.CreateCon(os.Getenv("AMQP_URL"))
+			log.Infof("creating connection...")
+			if err != nil {
+				log.Panic(err)
+			}
+			runQueue(ctx, cancelF, wg, q, rabbitCon)
+			log.Infof("start queue %s , worker %d", q.queueName(), q.numberOfWorker())
+		}(q, wg, m.CancelF)
 	}
 }
 
-func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection, quit chan<- bool) {
+func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGroup, q Queue, con *amqp.Connection) {
 	queueName := q.queueName()
 	queueNameRetry := q.queueRetry()
 	maxRetry, _ := strconv.ParseInt(os.Getenv("MAX_RETRY"), 10, 64)
 	for w := 0; w < q.numberOfWorker(); w++ {
 		go func(w int) {
-			chconsumer := rabbitmq.CreateChannel(con)
-			chpub := rabbitmq.CreateChannel(con)
+			chconsumer, err := rabbitmq.CreateChannel(con)
+			if err != nil {
+				log.Panic(err)
+			}
+			chpub, err := rabbitmq.CreateChannel(con)
+			if err != nil {
+				log.Panic(err)
+			}
 			conClose := make(chan *amqp.Error)
 			consumerTag := queueName + "_" + strconv.Itoa(w)
 			defer chconsumer.Close()
@@ -52,7 +62,10 @@ func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGrou
 			rabbitmq.CreateExchange(chconsumer, queueName)
 			rabbitmq.CreateQueue(chconsumer, queueName, nil)
 			chconsumer.QueueBind(queueName, "", queueName, false, nil)
-			msgs := rabbitmq.CreateConsumer(chconsumer, queueName, consumerTag)
+			msgs, err := rabbitmq.CreateConsumer(chconsumer, queueName, consumerTag)
+			if err != nil {
+				log.Panic(err)
+			}
 			queueRetryArgs := amqp.Table{}
 			rabbitmq.CreateExchange(chpub, queueNameRetry)
 			queueRetryArgs["x-dead-letter-exchange"] = queueName
@@ -68,7 +81,6 @@ func runQueue(ctx context.Context, cancelF context.CancelFunc, wg *sync.WaitGrou
 				case <-ctx.Done():
 					log.Infof("%s shutdown", consumerTag)
 					wg.Done()
-					quit <- true
 					return
 				case d := <-msgs:
 					jsonBody := string(d.Body)

@@ -1,8 +1,9 @@
 package rabbitmq
 
 import (
-	log "github.com/sirupsen/logrus"
+	"github.com/pkg/errors"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
 
@@ -13,26 +14,29 @@ func failOnError(err error, msg string) {
 }
 
 //CreateCon create connection
-func CreateCon(connectionString string) *amqp.Connection {
-	conn, err := amqp.Dial(connectionString)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	return conn
+func CreateCon(connectionString string) (*amqp.Connection, error) {
+	return amqp.Dial(connectionString)
 }
 
 //CreateChannel create channel
-func CreateChannel(conn *amqp.Connection) *amqp.Channel {
+func CreateChannel(conn *amqp.Connection) (*amqp.Channel, error) {
 	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to open a channel")
+	}
 	err = ch.Qos(
 		1,     // prefetch count
 		0,     // prefetch size
 		false, // global
 	)
-	failOnError(err, "Failed to set QoS")
-	return ch
+	if err != nil {
+		return nil, errors.Wrap(err, "can not set Qos")
+	}
+	return ch, nil
 }
 
-func CreateExchange(ch *amqp.Channel, name string) {
+//CreateExchange CreateExchange
+func CreateExchange(ch *amqp.Channel, name string) error {
 	err := ch.ExchangeDeclare(
 		name,     // name
 		"fanout", // type
@@ -42,11 +46,14 @@ func CreateExchange(ch *amqp.Channel, name string) {
 		false,    // no-wait
 		nil,      // arguments
 	)
-	failOnError(err, "Fail to create exchange")
+	if err != nil {
+		return errors.Wrap(err, "can not create exchange")
+	}
+	return nil
 }
 
 //CreateQueue create queue
-func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) amqp.Queue {
+func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) (*amqp.Queue, error) {
 	q, err := rbmq.QueueDeclare(
 		queuename, // name
 		true,      // durable
@@ -55,12 +62,14 @@ func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) amqp.Que
 		false,     // no-wait
 		args,      // arguments
 	)
-	failOnError(err, "Failed to declare a queue")
-	return q
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to declare a queue")
+	}
+	return &q, nil
 }
 
 //CreateConsumer create consumer
-func CreateConsumer(rbmq *amqp.Channel, queueName string, consumerName string) <-chan amqp.Delivery {
+func CreateConsumer(rbmq *amqp.Channel, queueName string, consumerName string) (<-chan amqp.Delivery, error) {
 	msgs, err := rbmq.Consume(
 		queueName,    // queue
 		consumerName, // consumer
@@ -70,8 +79,10 @@ func CreateConsumer(rbmq *amqp.Channel, queueName string, consumerName string) <
 		false,        // no-wait
 		nil,          // args
 	)
-	failOnError(err, "Failed to register a consumer")
-	return msgs
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to register a consumer")
+	}
+	return msgs, nil
 }
 
 //IsMaxRetry return IsRetryMessage,isMaxRetry, CurrentRetry

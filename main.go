@@ -25,11 +25,10 @@ func init() {
 }
 
 func main() {
-	quit := make(chan bool)
-	manager := &queue.Manager{Quit: quit}
 	ctx, cancelF := context.WithCancel(context.Background())
+	manager := &queue.Manager{CancelF: cancelF}
 	wg := sync.WaitGroup{}
-	manager.Run(ctx, cancelF, &wg, queue.NewExampleQueue())
+	manager.Run(ctx, &wg, queue.NewExampleQueue())
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -37,9 +36,7 @@ func main() {
 		log.Info("worker is shutting down")
 		defer close(sigs)
 		cancelF()
-		quit <- true
 	}()
-	<-quit
 	wg.Wait()
 }
 
