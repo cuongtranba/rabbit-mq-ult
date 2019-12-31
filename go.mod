@@ -1,4 +1,4 @@
-module job-queue
+module github.com/cuongtranba/rabbit-mq-ult
 
 require (
 	github.com/pkg/errors v0.8.1
@@ -7,3 +7,5 @@ require (
 	github.com/subosito/gotenv v1.2.0
 	golang.org/x/tools/gopls v0.1.7 // indirect
 )
+
+go 1.13

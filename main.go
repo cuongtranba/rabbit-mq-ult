@@ -2,50 +2,22 @@ package main
 
 import (
 	"context"
-	"job-queue/queue"
-	"os"
-	"os/signal"
-	"strings"
-	"sync"
-	"syscall"
+	"log"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/subosito/gotenv"
+	"github.com/cuongtranba/rabbit-mq-ult/consumer"
 )
 
-func init() {
-	err := gotenv.Load()
+func main() {
+	manager, err := consumer.NewManager(
+		context.Background(),
+		"amqp://services:services@192.168.1.13:5672/",
+		consumer.NewExampleConsumer(),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.Info(GetAllEnv())
-}
-
-func main() {
-	ctx, cancelF := context.WithCancel(context.Background())
-	manager := &queue.Manager{CancelF: cancelF}
-	wg := sync.WaitGroup{}
-	manager.Run(ctx, &wg, queue.NewExampleQueue())
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		log.Info("worker is shutting down")
-		defer close(sigs)
-		cancelF()
-	}()
-	wg.Wait()
-}
-
-//GetAllEnv export env variables
-func GetAllEnv() string {
-	var sb strings.Builder
-	for _, e := range os.Environ() {
-		sb.WriteString(e)
-		sb.WriteString("-")
+	err = manager.Run()
+	if err != nil {
+		log.Fatal(err)
 	}
-	return sb.String()
 }
