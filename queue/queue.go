@@ -2,11 +2,11 @@ package queue
 
 import (
 	"context"
-	"job-queue/rabbitmq"
 	"os"
 	"strconv"
 	"sync"
 
+	"github.com/cuongtranba/rabbit-mq-ult/rabbitmq"
 	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )

@@ -1,4 +1,4 @@
-module job-queue
+module github.com/cuongtranba/rabbit-mq-ult
 
 require (
 	github.com/pkg/errors v0.8.1
