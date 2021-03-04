@@ -1,4 +1,4 @@
-module github.com/cuongtranba/rabbit-mq-ult
+module github.com/cuongtranba/worker
 
 require (
 	github.com/pkg/errors v0.8.1
