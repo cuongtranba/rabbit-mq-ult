@@ -11,8 +11,6 @@ import (
 	"github.com/streadway/amqp"
 )
 
-type Option func()
-
 type Manager struct {
 	jobPool            JobPool
 	worker             Worker
@@ -28,12 +26,12 @@ type Manager struct {
 }
 
 func NewManager(
+	ctx context.Context,
 	jobPool JobPool,
 	queueName string,
 	maxRetry int,
 	retryIn time.Time,
 	worker Worker,
-	ctx context.Context,
 	log *log.Logger,
 	rabbitMqConnection *amqp.Connection) (*Manager, error) {
 	if rabbitMqConnection == nil || rabbitMqConnection.IsClosed() {
@@ -96,26 +94,28 @@ func (m *Manager) Start() {
 						}
 						retry, err := m.worker.process(m.ctx, job)
 						payloadString := structToString(job.Payload)
-						if err != nil {
+						if err == nil {
+							msg := fmt.Sprintf("process msg: %s done", payloadString)
 							if m.log != nil {
-								errorMsg := fmt.Sprintf("err: %v - can not process msg: %s - total retry: %d", err.Error(), payloadString, job.TotalRetry)
-								m.log.Println(errorMsg)
+								m.log.Println(msg)
 							}
-
-							if !retry {
-								continue
-							}
-
-							job.TotalRetry = job.TotalRetry + 1
-							errChan <- err
-
 							continue
 						}
-						msg := fmt.Sprintf("process msg: %s done", payloadString)
 
 						if m.log != nil {
-							m.log.Println(msg)
+							errorMsg := fmt.Sprintf("err: %v - can not process msg: %s - total retry: %d", err.Error(), payloadString, job.TotalRetry)
+							m.log.Println(errorMsg)
 						}
+
+						if !retry {
+							continue
+						}
+						//TODO: retry msg here
+						job.TotalRetry = job.TotalRetry + 1
+						errChan <- err
+
+						continue
+
 					}
 				case <-m.ctx.Done():
 					wg.Done()
