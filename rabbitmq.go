@@ -53,36 +53,3 @@ func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) (*amqp.Q
 	}
 	return &q, nil
 }
-
-//CreateConsumer create consumer
-func CreateConsumer(rbmq *amqp.Channel, queueName string, consumerName string) (<-chan amqp.Delivery, error) {
-	msgs, err := rbmq.Consume(
-		queueName,    // queue
-		consumerName, // consumer
-		false,        // auto-ack
-		false,        // exclusive
-		false,        // no-local
-		false,        // no-wait
-		nil,          // args
-	)
-	if err != nil {
-		return nil, err
-	}
-	return msgs, nil
-}
-
-//RetryMsg push msg to retry exchange
-func RetryMsg(ch *amqp.Channel, retryExchangeName string, msg amqp.Delivery, timeout string) error {
-	err := ch.Publish(
-		retryExchangeName,
-		"",
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        msg.Body,
-			Headers:     msg.Headers,
-			Expiration:  timeout,
-		})
-	return err
-}

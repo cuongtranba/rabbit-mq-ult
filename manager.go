@@ -2,35 +2,46 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
 )
 
+const (
+	errorTemplate = "err: %v - can not process msg: %s - total retry: %d"
+)
+
+// Manager keep state of worker and process data from pool
 type Manager struct {
 	jobPool            JobPool
 	worker             Worker
 	queueName          string
 	queueRetry         string
 	maxRetry           int
-	retryIn            time.Time
+	retryIn            time.Duration
 	rabbitMqConnection *amqp.Connection
 	ctx                context.Context
 	log                *log.Logger
 	cancelFuc          context.CancelFunc
 	retryChannel       *amqp.Channel
+	msgChan            <-chan amqp.Delivery
+	consumerChannel    *amqp.Channel
 }
 
+// NewManager create new manager and
+// create retry queue
 func NewManager(
 	ctx context.Context,
 	jobPool JobPool,
 	queueName string,
 	maxRetry int,
-	retryIn time.Time,
+	retryIn time.Duration,
 	worker Worker,
 	log *log.Logger,
 	rabbitMqConnection *amqp.Connection) (*Manager, error) {
@@ -60,9 +71,19 @@ func NewManager(
 	if err != nil {
 		return nil, err
 	}
+
+	consumerChannel, err := CreateChannel(rabbitMqConnection)
+	if err != nil {
+		return nil, err
+	}
+
+	msgChan, err := consumerChannel.Consume(queueName, "", true, false, false, false, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Manager{
 		jobPool:            jobPool,
-		queueName:          queueName,
 		queueRetry:         queueRetry,
 		maxRetry:           maxRetry,
 		retryIn:            retryIn,
@@ -71,51 +92,80 @@ func NewManager(
 		ctx:                ctx,
 		log:                log,
 		retryChannel:       retryChannel,
+		msgChan:            msgChan,
+		consumerChannel:    consumerChannel,
 	}, nil
 }
 
-// PushJob push job to job pool
-func (m *Manager) PushJob(job Payload) {
-	m.jobPool.job <- job
-}
-
 func (m *Manager) Start() {
-	errChan := make(chan error)
 	wg := &sync.WaitGroup{}
 	wg.Add(m.worker.size)
+
+	expirationInMiliseconds := m.retryIn.Milliseconds()
+	expirationInMilisecondsString := strconv.FormatInt(expirationInMiliseconds, 10)
+
+	go func() {
+		wg.Add(1)
+		for {
+			select {
+			case msg, haveMsg := <-m.msgChan:
+				if !haveMsg {
+					continue
+				}
+				var payload Payload
+				err := json.Unmarshal(msg.Body, &payload)
+				if err != nil {
+					m.logInfof("err: %v - can not unmarshal data: %s", err.Error(), string(msg.Body))
+					continue
+				}
+				m.jobPool.job <- payload
+			case <-m.ctx.Done():
+				wg.Done()
+				return
+			}
+		}
+	}()
+
 	for i := 0; i < m.worker.size; i++ {
 		go func(wg *sync.WaitGroup) {
 			for {
 				select {
 				case job, haveJob := <-m.jobPool.job:
-					if haveJob {
-						if job.TotalRetry >= m.maxRetry {
-							continue
-						}
-						retry, err := m.worker.process(m.ctx, job)
-						payloadString := structToString(job.Payload)
-						if err == nil {
-							msg := fmt.Sprintf("process msg: %s done", payloadString)
-							if m.log != nil {
-								m.log.Println(msg)
-							}
-							continue
-						}
-
-						if m.log != nil {
-							errorMsg := fmt.Sprintf("err: %v - can not process msg: %s - total retry: %d", err.Error(), payloadString, job.TotalRetry)
-							m.log.Println(errorMsg)
-						}
-
-						if !retry {
-							continue
-						}
-						//TODO: retry msg here
-						job.TotalRetry = job.TotalRetry + 1
-						errChan <- err
-
+					payloadString := structToString(job.Payload)
+					m.logInfof("processing msg: %s", payloadString)
+					if !haveJob {
 						continue
+					}
 
+					if job.TotalRetry >= m.maxRetry {
+						m.logInfof("max retry for msg: %s", payloadString)
+						continue
+					}
+
+					retry, err := m.worker.process(m.ctx, job)
+					if err == nil {
+						m.logInfof("process msg: %s success", payloadString)
+						continue
+					}
+
+					m.logInfof(errorTemplate, err.Error(), payloadString, job.TotalRetry)
+					if !retry {
+						continue
+					}
+
+					job.TotalRetry = job.TotalRetry + 1
+					payloadBuf, err := json.Marshal(job)
+					if err != nil {
+						m.logInfof(errorTemplate, err.Error(), payloadString, job.TotalRetry)
+						continue
+					}
+
+					err = m.retryChannel.Publish(m.queueRetry, "", false, false, amqp.Publishing{
+						Expiration: expirationInMilisecondsString,
+						Body:       payloadBuf,
+					})
+					if err != nil {
+						m.logInfof(errorTemplate, err.Error(), payloadString, job.TotalRetry)
 					}
 				case <-m.ctx.Done():
 					wg.Done()
@@ -125,4 +175,18 @@ func (m *Manager) Start() {
 		}(wg)
 	}
 	wg.Wait()
+	m.close()
+}
+
+func (m *Manager) close() {
+	m.retryChannel.Close()
+	m.consumerChannel.Close()
+}
+
+func (m *Manager) logInfof(format string, a ...interface{}) {
+	if m.log == nil {
+		return
+	}
+	msg := fmt.Sprintf(format, a...)
+	m.log.Println(msg)
 }
