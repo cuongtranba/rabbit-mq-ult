@@ -7,14 +7,20 @@ import (
 	"log"
 	"time"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/cuongtranba/worker"
 	"github.com/streadway/amqp"
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8082", nil))
+	}()
 	forever := make(chan struct{})
 	ctx, _ := context.WithCancel(context.Background())
-	rabbitmqCon, err := amqp.Dial("--rabbitmq here--")
+	rabbitmqCon, err := amqp.Dial("amqp://guest:guest@localhost:5672")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,6 +46,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	go func() {
 		workerManager.Start()
 	}()

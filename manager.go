@@ -97,6 +97,7 @@ func NewManager(
 	}, nil
 }
 
+// Start Start
 func (m *Manager) Start() {
 	wg := &sync.WaitGroup{}
 	wg.Add(m.worker.size)
@@ -106,13 +107,13 @@ func (m *Manager) Start() {
 
 	go func() {
 		wg.Add(1)
+		var payload Payload
 		for {
 			select {
 			case msg, haveMsg := <-m.msgChan:
 				if !haveMsg {
 					continue
 				}
-				var payload Payload
 				err := json.Unmarshal(msg.Body, &payload)
 				if err != nil {
 					m.logInfof("err: %v - can not unmarshal data: %s", err.Error(), string(msg.Body))
