@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -15,7 +14,7 @@ import (
 func main() {
 	forever := make(chan struct{})
 	ctx, _ := context.WithCancel(context.Background())
-	rabbitmqCon, err := amqp.Dial("amqps://gxfngpqa:MGsR0SgZ7CXdeivcL3opKkv7ddMHyUWZ@gerbil.rmq.cloudamqp.com/gxfngpqa")
+	rabbitmqCon, err := amqp.Dial("--rabbitmq here--")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +44,7 @@ func main() {
 		workerManager.Start()
 	}()
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 10000000; i++ {
 		body := worker.Payload{
 			Payload: i,
 		}
@@ -63,5 +62,5 @@ func main() {
 
 func process(ctx context.Context, payload worker.Payload) (bool, error) {
 	fmt.Printf("%v", payload)
-	return true, errors.New("test")
+	return false, nil
 }
