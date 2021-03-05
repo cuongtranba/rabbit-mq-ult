@@ -1,5 +1,7 @@
 module github.com/cuongtranba/worker
 
+go 1.15
+
 require (
 	github.com/pkg/errors v0.8.1
 	github.com/sirupsen/logrus v1.4.2

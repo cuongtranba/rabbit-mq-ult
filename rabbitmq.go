@@ -5,7 +5,7 @@ import (
 )
 
 //CreateChannel create channel
-func CreateChannel(conn *amqp.Connection) (*amqp.Channel, error) {
+func createChannel(conn *amqp.Connection) (*amqp.Channel, error) {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func CreateChannel(conn *amqp.Connection) (*amqp.Channel, error) {
 }
 
 //CreateExchange CreateExchange
-func CreateExchange(ch *amqp.Channel, name string) error {
+func createExchange(ch *amqp.Channel, name string) error {
 	err := ch.ExchangeDeclare(
 		name,     // name
 		"fanout", // type
@@ -39,7 +39,7 @@ func CreateExchange(ch *amqp.Channel, name string) error {
 }
 
 //CreateQueue create queue
-func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) (*amqp.Queue, error) {
+func createQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) (*amqp.Queue, error) {
 	q, err := rbmq.QueueDeclare(
 		queuename, // name
 		true,      // durable
@@ -52,4 +52,29 @@ func CreateQueue(rbmq *amqp.Channel, queuename string, args amqp.Table) (*amqp.Q
 		return nil, err
 	}
 	return &q, nil
+}
+
+func createRetryExchange(queueName, queueRetry string, rabbitMqConnection *amqp.Connection) (*amqp.Channel, error) {
+	retryChannel, err := createChannel(rabbitMqConnection)
+	if err != nil {
+		return nil, err
+	}
+
+	err = createExchange(retryChannel, queueRetry)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = createQueue(retryChannel, queueRetry, amqp.Table{
+		"x-dead-letter-exchange": queueName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = retryChannel.QueueBind(queueRetry, "", queueRetry, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	return retryChannel, nil
 }
