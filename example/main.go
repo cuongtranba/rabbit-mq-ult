@@ -22,7 +22,7 @@ func main() {
 	workerManager, err := worker.NewManager(
 		ctx,
 		"test",
-		5,
+		1,
 		time.Second*5,
 		worker.NewWorker(ctx, 10, process),
 		log.Default(),
@@ -35,10 +35,14 @@ func main() {
 	go func() {
 		workerManager.Start()
 	}()
-	termChan := make(chan os.Signal)
-	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
-	<-termChan
-	cancel()
+
+	go func() {
+		termChan := make(chan os.Signal)
+		signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
+		<-termChan
+		cancel()
+	}()
+
 	<-workerManager.Stop()
 }
 

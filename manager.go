@@ -54,7 +54,13 @@ func NewManager(
 		return nil, err
 	}
 
-	jobPool, err := newWorkerPool(worker.size, rabbitMqConnection, queueName)
+	workerCtx, cancelFunc := context.WithCancel(ctx)
+	jobPool, err := newWorkerPool(
+		workerCtx,
+		cancelFunc,
+		worker.size,
+		rabbitMqConnection,
+		queueName)
 	if err != nil {
 		return nil, err
 	}
@@ -80,12 +86,17 @@ func (m *Manager) Start() {
 	wg := &sync.WaitGroup{}
 	wg.Add(m.worker.size)
 
-	for i, job := range m.jobPool.jobs {
+	for i, jobPool := range m.jobPool.pools {
 		m.logInfof("start worker %d", i+1)
-		go func(wg *sync.WaitGroup, job <-chan amqp.Delivery, i int) {
+		go func(wg *sync.WaitGroup, pool *pool, i int) {
 			for {
 				select {
-				case job, haveJob := <-job:
+				case err, haveError := <-pool.closeChan:
+					if haveError {
+						m.logInfof("something wrong %s ", err.Error())
+						pool.cancelFunc()
+					}
+				case job, haveJob := <-pool.job:
 					if haveJob {
 						var payload Payload
 						err := json.Unmarshal(job.Body, &payload)
@@ -100,13 +111,13 @@ func (m *Manager) Start() {
 							m.logInfof("process msg:%s success", payloadString)
 						}
 					}
-				case <-m.ctx.Done():
+				case <-pool.ctx.Done():
 					m.logInfof("stopping worker %d", i+1)
 					wg.Done()
 					return
 				}
 			}
-		}(wg, job, i)
+		}(wg, jobPool, i)
 	}
 
 	wg.Wait()
