@@ -13,9 +13,14 @@ import (
 	"github.com/streadway/amqp"
 )
 
+type myStudent struct {
+	Name string
+	Age  int
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	rabbitmqCon, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+	rabbitmqCon, err := amqp.Dial("amqps://cyxikkke:xipuvCKU6xkB1Phk14ihWhXN6drl602B@cougar.rmq.cloudamqp.com/cyxikkke")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,7 +51,7 @@ func main() {
 	<-workerManager.Stop()
 }
 
-func process(ctx context.Context, payload worker.Payload) (bool, error) {
-	fmt.Printf("%v", payload)
+func process(ctx context.Context, payload worker.Payload[myStudent]) (bool, error) {
+	fmt.Println("have message", payload.Payload.Age, "-", payload.Payload.Name)
 	return false, nil
 }

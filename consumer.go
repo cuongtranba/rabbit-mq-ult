@@ -6,9 +6,9 @@ import (
 	"github.com/streadway/amqp"
 )
 
-type Payload struct {
-	TotalRetry int         `json:"TotalRetry"`
-	Payload    interface{} `json:"Payload"`
+type Payload[T any] struct {
+	TotalRetry int `json:"TotalRetry"`
+	Payload    T   `json:"Payload"`
 }
 
 type pool struct {

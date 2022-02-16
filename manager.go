@@ -18,8 +18,8 @@ const (
 )
 
 // Manager keep state of worker and process data from pool
-type Manager struct {
-	worker                        Worker
+type Manager[T any] struct {
+	worker                        Worker[T]
 	queueName                     string
 	queueRetry                    string
 	maxRetry                      int
@@ -36,14 +36,14 @@ type Manager struct {
 
 // NewManager create new manager and
 // create retry queue
-func NewManager(
+func NewManager[T any](
 	ctx context.Context,
 	queueName string,
 	maxRetry int,
 	retryIn time.Duration,
-	worker Worker,
+	worker Worker[T],
 	log *log.Logger,
-	rabbitMqConnection *amqp.Connection) (*Manager, error) {
+	rabbitMqConnection *amqp.Connection) (*Manager[T], error) {
 	if rabbitMqConnection == nil || rabbitMqConnection.IsClosed() {
 		return nil, errors.New("rabbitmq connection is nil or close")
 	}
@@ -66,7 +66,7 @@ func NewManager(
 	}
 
 	expirationInMilisecondsString := strconv.FormatInt(retryIn.Milliseconds(), 10)
-	return &Manager{
+	return &Manager[T]{
 		queueRetry:                    queueRetry,
 		maxRetry:                      maxRetry,
 		retryIn:                       retryIn,
@@ -82,7 +82,7 @@ func NewManager(
 }
 
 // Start Start
-func (m *Manager) Start() {
+func (m *Manager[T]) Start() {
 	wg := &sync.WaitGroup{}
 	wg.Add(m.worker.size)
 
@@ -98,7 +98,7 @@ func (m *Manager) Start() {
 					}
 				case job, haveJob := <-pool.job:
 					if haveJob {
-						var payload Payload
+						var payload Payload[T]
 						err := json.Unmarshal(job.Body, &payload)
 						if err != nil {
 							m.logInfof("can not parser msg: %s - err: %s", string(job.Body), err.Error())
@@ -125,16 +125,16 @@ func (m *Manager) Start() {
 	m.closeChan <- struct{}{}
 }
 
-func (m *Manager) close() {
+func (m *Manager[T]) close() {
 	m.retryChannel.Close()
 	m.jobPool.Close()
 }
 
-func (m *Manager) Stop() <-chan struct{} {
+func (m *Manager[T]) Stop() <-chan struct{} {
 	return m.closeChan
 }
 
-func (m *Manager) logInfof(format string, a ...interface{}) {
+func (m *Manager[T]) logInfof(format string, a ...interface{}) {
 	if m.log == nil {
 		return
 	}
@@ -142,7 +142,7 @@ func (m *Manager) logInfof(format string, a ...interface{}) {
 	m.log.Println(msg)
 }
 
-func (m *Manager) dispatch(job Payload) error {
+func (m *Manager[T]) dispatch(job Payload[T]) error {
 	payloadString := structToString(job.Payload)
 	m.logInfof("processing msg: %s", payloadString)
 	if job.TotalRetry >= m.maxRetry {

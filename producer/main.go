@@ -5,12 +5,18 @@ import (
 	"log"
 	"time"
 
+	"github.com/brianvoe/gofakeit"
 	"github.com/cuongtranba/worker"
 	"github.com/streadway/amqp"
 )
 
+type student struct {
+	Name string
+	Age  int
+}
+
 func main() {
-	rabbitmqCon, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+	rabbitmqCon, err := amqp.Dial("amqps://cyxikkke:xipuvCKU6xkB1Phk14ihWhXN6drl602B@cougar.rmq.cloudamqp.com/cyxikkke")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,8 +39,11 @@ func main() {
 	err = ch.QueueBind("test", "", "test", false, nil)
 
 	for i := 0; i < 10000; i++ {
-		body := worker.Payload{
-			Payload: i,
+		body := worker.Payload[student]{
+			Payload: student{
+				Name: gofakeit.Name(),
+				Age:  i + 1,
+			},
 		}
 		bodyBuf, _ := json.Marshal(body)
 		err := ch.Publish("test", "", false, false, amqp.Publishing{
